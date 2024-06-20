@@ -63,7 +63,7 @@
     "showMountPrompt": true,
     "skipUpdate": "",
     "snapToSize": true,
-    "snooperEnabled": true,
+    "snooperEnabled": false,
     "standardsMode": false,
     "useDFPWM": false,
     "useHardwareRenderer": false,
