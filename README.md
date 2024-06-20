@@ -105,6 +105,8 @@ faygo.run(main) -- This is required for button callbacks to function
 faygo.cleanUp() -- Technically optional, but will clean up the screen if the program quits unexpectedly.
 ```
 
+### See the examples.lua file for some more examples with monitors and multiple buttons
+
 ## Q & A
 
 ### Why are elements not showing up on my screen/not where I told them to be?
@@ -112,6 +114,9 @@ Faygo uses a different coordinate system to ComputerCraft, with **1, 1 being the
 
 ### Why are my buttons not working?
 Make sure that you have started the event listener, either with `faygo.run()` or `faygo.run(main)` where `main` is the name of your program's main looping function.
+
+### Why are my circles look like squares?
+The code used to draw circles breaks down at small radiuses, try using `gui:drawRectRound()` instead.
 
 ### Why is it called Faygo?
 Because I needed to name the folder something so I looked around my room and saw a bottle of Faygo :)
