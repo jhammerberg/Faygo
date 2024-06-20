@@ -15,6 +15,9 @@ The goal of Faygo is to provide an easy way to draw elements and create buttons 
 
 ## Usage
 
+### Download the Faygo.lua to your computer with
+### `wget https://raw.githubusercontent.com/jhammerberg/Faygo/main/Faygo.lua`
+
 ### Load the Faygo API with
 ```lua
 local faygo = require("Faygo")
