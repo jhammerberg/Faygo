@@ -12,7 +12,7 @@ local threadAlive = false -- A variable to keep track of the event listener thre
 -- Most functions will immediately translate these 1-100 values to the actual pixel values on the GUI, sorry if it's confusing
 -- This function translates the 1-100 scale to the actual width of the monitor
 function GUI_object:translateX(x)
-    return math.floor(((x / 100) * self.width) + 1)
+    return math.floor(((x / 100) * self.width))
 end
 
 function GUI_object:translateY(y)
@@ -130,6 +130,33 @@ function GUI_object:drawLine(color, startX, startY, endX, endY)
     end
 end
 
+-- drawLineText() - Draws a line using a specific character
+function GUI_object:drawLineText(color, char, startX, startY, endX, endY)
+    local startX, startY = self:translatePos(startX, startY)
+    local endX, endY = self:translatePos(endX, endY)
+    self.GUI.setTextColour(color)
+    self.GUI.setCursorPos(startX, startY)
+    self.GUI.write(char)
+    local dx = math.abs(endX - startX)
+    local dy = math.abs(endY - startY)
+    local sx = startX < endX and 1 or -1
+    local sy = startY < endY and 1 or -1
+    local err = dx - dy
+    while not (startX == endX and startY == endY) do
+        local e2 = err + err
+        if e2 > -dy then
+            err = err - dy
+            startX = startX + sx
+        end
+        if e2 < dx then
+            err = err + dx
+            startY = startY + sy
+        end
+        self.GUI.setCursorPos(startX, startY)
+        self.GUI.write(char)
+    end
+end
+
 -- drawText() - Draw text on the GUI
 function GUI_object:drawText(color, x, y, text)
     local x, y = self:translatePos(x, y)
@@ -149,20 +176,20 @@ function GUI_object:drawTextCenter(color, x, y, text)
 end
 
 -- newButton() - Constructs a new button object and listens for it to be pressed and calls the callback
-function GUI_object:newButton(color, startX, startY, endX, endY, text, callback)
+function GUI_object:newButton(color, textColor, startX, startY, endX, endY, text, callback)
     local button = {}
     -- Add the button to the GUI's list of buttons
     table.insert(self.buttons, button)
     -- Draw the button (this should probably be redone)
-    self:drawRectRound(color, startX, startY, endX, endY)
+    self:setBackground(color)
+    self:drawRect(color, startX, startY, endX, endY)
     -- Translate coordinates
     local startX, startY = self:translatePos(startX, startY)
     local endX, endY = self:translatePos(endX, endY)
     -- Draw the text
     local textX = math.floor((endX - startX - #text) / 2) + startX
     local textY = math.floor((endY - startY) / 2) + startY
-    self.GUI.setBackgroundColor(color)
-    self.GUI.setTextColor(colors.blue)
+    self.GUI.setTextColor(textColor)
     self.GUI.setCursorPos(textX, textY)
     self.GUI.write(text)
     -- Set the button's properties
