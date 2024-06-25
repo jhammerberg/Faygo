@@ -4,42 +4,54 @@
 
 local Faygo = {}
 local GUI_object = {} -- A 'constructor' for the GUI object, technically a table with a metatable that is actually returned...
+local button_object = {}
 local Active_GUIS = {} -- A table to store all the active GUIs, used for event handling
 local threadAlive = false -- A variable to keep track of the event listener thread
 ---
 
--- For the sake of easier GUI drawing, functions that take position arguments will be on a scale from 1 to 100 instead of whatever width the monitor is
--- Most functions will immediately translate these 1-100 values to the actual pixel values on the GUI, sorry if it's confusing
--- This function translates the 1-100 scale to the actual width of the monitor
-function GUI_object:translateX(x)
-    return math.floor(((x / 100) * self.width) + 1)
+-- translatePoint() - Translate a point to have 0, 0 be at the bottom left
+function GUI_object:translatePoint(point) -- We also invert the Y axis
+    return { x = point.x + 1, y = (self.absHeight + 1) - point.y}
 end
 
-function GUI_object:translateY(y)
-    -- Additionally, the position for the cursor on the Y axis has 0 at the top, so we need to invert the Y axis
-    y = 100 - y
-    -- Also, the Y axis is 1-indexed, so we need to subtract, I mean add cause it's inverted, 1 from the Y value
-    return math.floor(((y / 100) * self.height) + 1)
+-- untranslatePoint() - this is a dumb name, but useful when you want to convert a point back to our coordinate system
+function GUI_object:untranslatePoint(point)
+    return { x = point.x - 1, y = (self.absHeight - (point.y - 1))}
 end
 
-function GUI_object:translatePos(x, y)
-    return self:translateX(x), self:translateY(y)
+-- getAbsPoint(x, y) - Get the absolute position of a point on the GUI
+function GUI_object:getAbsPoint(relativeX, relativeY)
+    local scalerX = (relativeX/100)
+    local scalerY = (relativeY/100)
+    return { x = self.absWidth * scalerX, y = self.absHeight * scalerY }
 end
 
--- Translate an arbitrary 1 to 100 number to a normal one in pixel, like a radius for a circle
-function GUI_object:translateArb(r)
-    return math.floor((r / 100) * ((self.width + self.height) / 2))
+function GUI_object:getMidPoint(startPoint, endPoint)
+    local startPoint = self:translatePoint(startPoint)
+    local endPoint = self:translatePoint(endPoint)
+    return { x = (startPoint.x + endPoint.x) / 2, y = (startPoint.y + endPoint.y) / 2 }
 end
 
--- setBackground() - Set the background color of the GUI
+-- setBackground(color) - Set the background color of the GUI
 function GUI_object:setBackground(color)
     self.backgroundColor = color
     self.GUI.setBackgroundColor(color)
 end
 
+-- setBackgroundColor() - Alias for setBackground()
+function GUI_object:setBackgroundColor(color)
+    self:setBackground(color)
+end
+
 -- setForeground() - Set the foreground color of the GUI
 function GUI_object:setForeground(color)
+    self.foregroundColor = color
     self.GUI.setTextColor(color)
+end
+
+-- setForegroundColor() - Alias for setForeground()
+function GUI_object:setForegroundColor(color)
+    self:setForeground(color)
 end
 
 -- clearScreen() - Clear the screen of the GUI
@@ -56,137 +68,186 @@ function GUI_object:hideCursor()
     self.GUI.setCursorPos(0,0)
 end
 
--- drawRect() - Draw a rectangle on the GUI
-function GUI_object:drawRect(color, startX, startY, endX, endY)
-    local startX, startY = self:translatePos(startX, startY)
-    local endX, endY = self:translatePos(endX, endY)
-    self.GUI.setBackgroundColor(color)
-    for y = endY, startY do
-        self.GUI.setCursorPos(startX, y)
-        for x = startX, endX do
+-- drawRectFilled(backgroundColor, startPoint, endPoint) - Draw a solid rectangle on the GUI
+function GUI_object:drawRectFilled(backgroundColor, startPoint, endPoint)
+    -- Save the current background color so we can reset it after we draw the rectangle
+    local oldBackgroundColor = self.backgroundColor
+    local startPoint = self:translatePoint(startPoint)
+    local endPoint = self:translatePoint(endPoint)
+    self:setBackgroundColor(backgroundColor)
+    for y = endPoint.y, startPoint.y do
+        self.GUI.setCursorPos(startPoint.x, y)
+        for x = startPoint.x, endPoint.x do
             self.GUI.write(" ")
         end
     end
+
+    self:setBackgroundColor(oldBackgroundColor)
 end
 
--- drawCircle() - Draw a circle on the GUI
-function GUI_object:drawCircle(color, x, y, radius)
-    local midx, midy = self:translatePos(x, y)
-    local radius = self:translateArb(radius)
-    self.GUI.setBackgroundColor(color)
+-- drawCircle(color, centerPoint, radius) - Draw a solid circle on the GUI
+function GUI_object:drawCircleFilled(backgroundColor, centerPoint, radius)
+    -- Save the current background color so we can reset it after we draw the circle
+    local oldBackgroundColor = self.backgroundColor
+    local centerPoint = self:translatePoint(centerPoint)
+    local radius = self:translatePoint(radius)
+    self:setBackgroundColor(backgroundColor)
     for y=-radius, radius do
         for x=-radius, radius do
             if x*x + (1.5*y)*(1.5*y) < radius*radius then -- Correct for vertical pixels being taller than horizontal pixels
-                self.GUI.setCursorPos(midx + x, midy + y)
-                self.GUI.setBackgroundColor(color)
+                self.GUI.setCursorPos(centerPoint.x + x, centerPoint.y + y)
                 self.GUI.write(" ")
+            end
+        end
+    end
+    self:setBackgroundColor(oldBackgroundColor)
+end
+
+-- drawRectRound(backgroundColor, startPoint, endPoint) - Draw a rectangle with rounded corners on the GUI
+function GUI_object:drawRectRound(backgroundColor, startPoint, endPoint)
+    -- Save the current background color so we can reset it after we draw the rectangle
+    local oldBackgroundColor = self.backgroundColor
+    -- Draw the rectangle
+    self:drawRect(backgroundColor, startPoint, endPoint)
+    local startPoint = self:translatePoint(startPoint)
+    local endPoint = self:translatePoint(endPoint)
+    -- Switch to the background color and draw the corners
+    self.GUI.setBackgroundColor(self.backgroundColor) -- Might not be necessary since it should switch back after the drawRect() call
+    self.GUI.setCursorPos(startPoint.x, endPoint.y)
+    self.GUI.write(" ")
+    self.GUI.setCursorPos(endPoint.x, endPoint.y)
+    self.GUI.write(" ")
+    self.GUI.setCursorPos(startPoint.x, startPoint.y)
+    self.GUI.write(" ")
+    self.GUI.setCursorPos(endPoint.x, startPoint.y)
+    self.GUI.write(" ")
+    self:setBackgroundColor(oldBackgroundColor)
+end
+
+-- drawLineText() - Draws a line using a specific character
+function GUI_object:drawLineText(backgroundColor, foregroundColor, char, startPoint, endPoint)
+    -- Save the current background color so we can reset it after we draw the line
+    local oldBackgroundColor = self.backgroundColor
+    local oldForegroundColor = self.foregroundColor
+    local startPoint = self:translatePoint(startPoint)
+    local endPoint = self:translatePoint(endPoint)
+    self:setBackgroundColor(backgroundColor)
+    self:setForegroundColor(foregroundColor)
+    self.GUI.setCursorPos(startPoint.x, startPoint.y)
+    self.GUI.write(" ")
+    local dx = math.abs(endPoint.x - startPoint.x)
+    local dy = math.abs(endPoint.y - startPoint.y)
+    local sx = startPoint.x < endPoint.x and 1 or -1
+    local sy = startPoint.y < endPoint.y and 1 or -1
+    local err = dx - dy
+    while not (startPoint.x == endPoint.x and startPoint.y == endPoint.y) do
+        local e2 = err + err
+        if e2 > -dy then
+            err = err - dy
+            startPoint.x = startPoint.x + sx
+        end
+        if e2 < dx then
+            err = err + dx
+            startPoint.y = startPoint.y + sy
+        end
+        self.GUI.setCursorPos(startPoint.x, startPoint.y)
+        self.GUI.write(char)
+    end
+    self:setBackgroundColor(oldBackgroundColor)
+    self:setForegroundColor(oldForegroundColor)
+end
+
+-- drawLine(backgroundColor, startPoint, endPoint) - Draw a line on the GUI
+function GUI_object:drawLine(backgroundColor, startPoint, endPoint)
+    self:drawLineText(backgroundColor, " ", startPoint, endPoint)
+end
+
+-- drawText() - Draw text on the GUI
+function GUI_object:drawText(foregroundColor, backgroundColor, point, text)
+    -- Save the current colors so we can reset it afterwards
+    local oldBackgroundColor = self.backgroundColor
+    local oldForegroundColor = self.foregroundColor
+    local point = self:translatePoint(point)
+    self:setBackgroundColor(backgroundColor)
+    self:setForegroundColor(foregroundColor)
+    self.GUI.setCursorPos(point.x, point.y)
+    self.GUI.write(text)
+    self:setBackgroundColor(oldBackgroundColor)
+    self:setForegroundColor(oldForegroundColor)
+end
+
+-- drawTextCenter() - Draw text centrally around a point on the GUI
+function GUI_object:drawTextCenter(foregroundColor, backgroundColor, point, text)
+    local point = self:translatePoint(point)
+    -- Offset the x and y by half the length of the text using absOffsetPos()
+    local point = { x = (point.x + (-#text / 2)), y = (point.y) }
+    -- Draw the text normally
+    self:drawText(foregroundColor, backgroundColor, point, text)
+end
+
+-- Constructs a new button object and listens for it to be pressed and calls the callback
+-- newButton(backgroundColor, foregroundColor, startX, endX, startY, endY, text, interactCallback) 
+function GUI_object:newButton(foregroundColor, backgroundColor, startPoint, endPoint, text, interactCallback)
+    local button = {}
+    local midPoint = { x = (startPoint.x + endPoint.x) / 2, y = (startPoint.y + endPoint.y) / 2 }
+    -- Draw the button (this should probably be redone)
+    self:drawRectFilled(backgroundColor, startPoint, endPoint)
+    -- Draw the text
+    midPoint = self:untranslatePoint(midPoint) -- We need to convert the midpoint back to the GUI's coordinate system
+    self:drawTextCenter(foregroundColor, backgroundColor, midPoint, text)
+    -- Set the button's properties
+    button.parent = self
+    button.startPoint = startPoint
+    button.endPoint = endPoint
+    button.interactCallback = interactCallback
+    button.text = text
+    button.foregroundColor = foregroundColor
+    button.backgroundColor = backgroundColor
+    -- Add the methods to the button object
+    setmetatable(button, {__index = button_object})
+    -- Add the button to the GUI's list of buttons
+    -- This effectively adds it to the event listener
+    table.insert(self.buttons, button)
+    -- Return the button object
+    return button
+end
+
+-- killButton(button) - Deletes the button from the event listener, does not remove the button from the GUI
+function button_object:kill()
+    for _, gui in pairs(Active_GUIS) do
+        for i, b in pairs(gui.buttons) do
+            if b == self then
+                -- Redraw the area the button was in to clear it
+                gui:drawRectFilled(gui.backgroundColor, self.startPoint, self.endPoint)
+                -- Remove the button from the GUI's list of buttons
+                table.remove(gui.buttons, i)
             end
         end
     end
 end
 
--- drawRectRound() - Draw a rectangle with rounded corners on the GUI
-function GUI_object:drawRectRound(color, startX, startY, endX, endY)
-    -- Draw the rectangle
-    self:drawRect(color, startX, startY, endX, endY)
-    local startX, startY = self:translatePos(startX, startY)
-    local endX, endY = self:translatePos(endX, endY)
-    -- Switch to the background color and draw the corners
-    self.GUI.setBackgroundColor(self.backgroundColor)
-    self.GUI.setCursorPos(startX, endY)
-    self.GUI.write(" ")
-    self.GUI.setCursorPos(endX, endY)
-    self.GUI.write(" ")
-    self.GUI.setCursorPos(startX, startY)
-    self.GUI.write(" ")
-    self.GUI.setCursorPos(endX, startY)
-    self.GUI.write(" ")
-end
-
--- drawLine() - Draw a line on the GUI
-function GUI_object:drawLine(color, startX, startY, endX, endY)
-    local startX, startY = self:translatePos(startX, startY)
-    local endX, endY = self:translatePos(endX, endY)
-    self.GUI.setBackgroundColor(color)
-    self.GUI.setCursorPos(startX, startY)
-    self.GUI.write(" ")
-    local dx = math.abs(endX - startX)
-    local dy = math.abs(endY - startY)
-    local sx = startX < endX and 1 or -1
-    local sy = startY < endY and 1 or -1
-    local err = dx - dy
-    while not (startX == endX and startY == endY) do
-        local e2 = err + err
-        if e2 > -dy then
-            err = err - dy
-            startX = startX + sx
-        end
-        if e2 < dx then
-            err = err + dx
-            startY = startY + sy
-        end
-        self.GUI.setCursorPos(startX, startY)
-        self.GUI.write(" ")
+-- redraw(foregroundColor, backgroundColor, text) - Redraws the button, useful for when the button is pressed and you want to show it's been pressed
+-- The arugments are optional, if none are provided it will redraw the button as it was when it was created
+function button_object:redraw(foregroundColor, backgroundColor, text)
+    local startPoint = self.startPoint
+    local endPoint = self.endPoint
+    if foregroundColor == nil then
+        foregroundColor = self.foregroundColor
     end
-end
-
--- drawText() - Draw text on the GUI
-function GUI_object:drawText(color, x, y, text)
-    local x, y = self:translatePos(x, y)
-    self.GUI.setBackgroundColor(self.backgroundColor)
-    self.GUI.setTextColor(color)
-    self.GUI.setCursorPos(x, y)
-    self.GUI.write(text)
-end
-
--- drawTextCenter() - Draw text centrally around a point on the GUI
-function GUI_object:drawTextCenter(color, x, y, text)
-    local x, y = self:translatePos(x, y)
-    local textX = x - math.floor(#text / 2)
-    self.GUI.setTextColor(color)
-    self.GUI.setCursorPos(textX, y)
-    self.GUI.write(text)
-end
-
--- newButton() - Constructs a new button object and listens for it to be pressed and calls the callback
-function GUI_object:newButton(color, startX, startY, endX, endY, text, callback)
-    local button = {}
-    -- Add the button to the GUI's list of buttons
-    table.insert(self.buttons, button)
-    -- Draw the button (this should probably be redone)
-    self:drawRectRound(color, startX, startY, endX, endY)
-    -- Translate coordinates
-    local startX, startY = self:translatePos(startX, startY)
-    local endX, endY = self:translatePos(endX, endY)
-    -- Draw the text
-    local textX = math.floor((endX - startX - #text) / 2) + startX
-    local textY = math.floor((endY - startY) / 2) + startY
-    self.GUI.setBackgroundColor(color)
-    self.GUI.setTextColor(colors.blue)
-    self.GUI.setCursorPos(textX, textY)
-    self.GUI.write(text)
-    -- Set the button's properties
-    button.startX = startX
-    button.startY = startY
-    button.endX = endX
-    button.endY = endY
-    button.callback = callback
-    -- Return the button object
-    return button
-    -- We don't handle the event listener here, that's done in the Faygo.checkEvents() function
-end
-
--- killButton() - Deletes the button from the event listener, does not remove the button from the GUI
-function GUI_object:killButton(button)
-    for i, b in pairs(self.buttons) do
-        if b == button then
-            table.remove(self.buttons, i)
-        end
+    if backgroundColor == nil then
+        backgroundColor = self.backgroundColor
     end
+    if text == nil then
+        text = self.text
+    end
+    self.parent:drawRectFilled(backgroundColor, startPoint, endPoint)
+    local midPoint = { x = (startPoint.x + endPoint.x) / 2, y = (startPoint.y + endPoint.y) / 2 }
+    midPoint = self.parent:untranslatePoint(midPoint)
+    self.parent:drawTextCenter(foregroundColor, backgroundColor, midPoint, text)
 end
 
--- killGUI() - Deletes the GUI from the event listener and clears the screen the GUI was on
-function GUI_object:killGUI()
+-- kill() - Deletes the GUI from the event listener and clears the screen the GUI was on
+function GUI_object:kill()
     self:clearScreen()
     for i, gui in pairs(Active_GUIS) do
         if gui == self then
@@ -208,8 +269,10 @@ function Faygo.checkEvents()
             if gui.side == nil then
                 -- See if there is a button inside the GUI at the position that was clicked and call the callback
                 for _, button in pairs(gui.buttons) do
-                    if x >= button.startX and x <= button.endX and y >= button.endY and y <= button.startY then
-                        button.callback(key) -- We'll pass this to the callback cause why not
+                    local startPoint = gui:translatePoint(button.startPoint)
+                    local endPoint = gui:translatePoint(button.endPoint)
+                    if x >= startPoint.x and x <= endPoint.x and y >= endPoint.y and y <= startPoint.y then
+                        button.interactCallback(button, key) -- We'll pass this to the callback cause why not
                     end
                 end
             end
@@ -221,8 +284,10 @@ function Faygo.checkEvents()
             if gui.side == side then
                 -- See if there is a button inside the GUI at the position that was clicked and call the callback
                 for _, button in pairs(gui.buttons) do
-                    if x >= button.startX and x <= button.endX and y >= button.endY and y <= button.startY then
-                        button.callback()
+                    local startPoint = gui:translatePoint(button.startPoint)
+                    local endPoint = gui:translatePoint(button.endPoint)
+                    if x >= startPoint.x and x <= endPoint.x and y >= endPoint.y and y <= startPoint.y then
+                        button.interactCallback(button)
                     end
                 end
             end
@@ -237,25 +302,10 @@ local function startFaygoThread()
     end
 end
 
--- IMPORTANT: This function should be called *instead* of calling your main function
--- Starts the event listener for the buttons, takes a main function as an argument so it can be ran with the parallel API.
--- Alternatively, not passing a main function will simply run the event listener and block the main thread
--- This is the closest thing to async you can get in CC Lua, since we can't use coroutines with the event API easily or safely.
--- Yet another option is to call the Faygo.checkEvents() function in your main loop
--- But that's not advised since it will block the rest of the loop and means that the polling rate for buttons depends on your main loop
-function Faygo.run(main)
-    if main == nil then -- If there's no main function, just run the event listener and block the main thread
-        threadAlive = true
-        startFaygoThread()
-    else -- If there is a main function, run it in parallel with the event listener
-        threadAlive = true
-        parallel.waitForAny(main, startFaygoThread)
-    end 
-end
-
--- GUI initialization, define if the GUI is being drawn on a terminal or a monitor
+-- Returns a new GUI object bound to a monitor or terminal
+-- Faygo.newGUI([mon]) - optional argument for a monitor object, if none is provided it will default to the terminal
 function Faygo.newGUI(mon)
-    GUI_return_value = {} 
+    local GUI_return_value = {} 
     -- Classes in Lua are confusing since they don't really exist
     -- What's going on is that there's a "GUI_object" table that has a metatable of "GUI_return_value"
     -- When I want to add methods to the GUI_object, I add them to the GUI_return_value table.
@@ -279,23 +329,42 @@ function Faygo.newGUI(mon)
         -- Get the side the monitor is on so we know where to look for events
         GUI_return_value.side = peripheral.getName(mon)
     end
-
-    GUI_return_value.width, GUI_return_value.height = GUI_return_value.GUI.getSize()
+    GUI_return_value.parent = nil -- We're creating a 'screen' GUI, so there's no parent (this would be implied, but we're making sure)
+    local tempX, tempY = GUI_return_value.GUI.getSize() -- We do this so we can change the size of the GUI later
+    GUI_return_value.absWidth, GUI_return_value.absHeight = (tempX-1), (tempY-1) -- We subtract one from the size because our system indexes at 0,0
     GUI_return_value.backgroundColor = colors.black
+    GUI_return_value.foregroundColor = colors.white
     GUI_return_value.buttons = {} -- A table to store all the buttons on the GUI, it will be empty initially.
     table.insert(Active_GUIS, GUI_return_value)
 
     return GUI_return_value
 end
 
--- init() - Initialize the GUI alias of initGUI()
+-- Alias for newGUI()
+-- initGUI([mon]) - optional argument for a monitor object, if none is provided it will default to the terminal
 function Faygo.initGUI(mon)
-    return Faygo.newGUI(mon)
+    return Faygo.newScreen(mon)
+end
+
+-- IMPORTANT: This function should be called *instead* of calling your main function
+-- Starts the event listener for the buttons, takes a main function as an argument so it can be ran with the parallel API.
+-- Alternatively, not passing a main function will simply run the event listener and block the main thread
+-- This is the closest thing to async you can get in CC Lua, since we can't use coroutines with the event API easily or safely.
+-- Yet another option is to call the Faygo.checkEvents() function in your main loop
+-- But that's not advised since it will block the rest of the loop and means that the polling rate for buttons depends on your main loop
+function Faygo.run(main)
+    if main == nil then -- If there's no main function, just run the event listener and block the main thread
+        threadAlive = true
+        startFaygoThread()
+    else -- If there is a main function, run it in parallel with the event listener
+        threadAlive = true
+        parallel.waitForAny(main, startFaygoThread)
+    end 
 end
 
 -- cleanUp() - Deletes all active buttons, all active GUIs, kills the event listener, and clears the screen
 -- Sort of optional, since when the main program ends, the event listener will end as well, but this also clears all screens
--- !!! This will also terminate the main program !!!
+-- !!! This will also terminate the main program !!! (assuming it's ran in parallel)
 function Faygo.cleanUp()
     for _, gui in pairs(Active_GUIS) do
         gui:setBackground(colors.black)
