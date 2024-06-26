@@ -134,7 +134,7 @@ function GUI_object:drawLineText(backgroundColor, foregroundColor, char, startPo
     self:setBackgroundColor(backgroundColor)
     self:setForegroundColor(foregroundColor)
     self.GUI.setCursorPos(startPoint.x, startPoint.y)
-    self.GUI.write(" ")
+    --self.GUI.write(char)
     local dx = math.abs(endPoint.x - startPoint.x)
     local dy = math.abs(endPoint.y - startPoint.y)
     local sx = startPoint.x < endPoint.x and 1 or -1
@@ -150,7 +150,7 @@ function GUI_object:drawLineText(backgroundColor, foregroundColor, char, startPo
             err = err + dx
             startPoint.y = startPoint.y + sy
         end
-        self.GUI.setCursorPos(startPoint.x, startPoint.y)
+        self.GUI.setCursorPos(startPoint.x, startPoint.y) -- Move the cursor before writing the character
         self.GUI.write(char)
     end
     self:setBackgroundColor(oldBackgroundColor)
@@ -180,7 +180,7 @@ end
 function GUI_object:drawTextCenter(foregroundColor, backgroundColor, point, text)
     local point = self:translatePoint(point)
     -- Offset the x and y by half the length of the text using absOffsetPos()
-    local point = { x = (point.x + (-#text / 2)), y = (point.y) }
+    local point = { x = (point.x + (-#text / 2))+1, y = (point.y) }
     -- Draw the text normally
     self:drawText(foregroundColor, backgroundColor, point, text)
 end
@@ -212,7 +212,7 @@ function GUI_object:newButton(foregroundColor, backgroundColor, startPoint, endP
     return button
 end
 
--- killButton(button) - Deletes the button from the event listener, does not remove the button from the GUI
+-- kill() - Deletes the button from the event listener, and clears it's area from the GUI
 function button_object:kill()
     for _, gui in pairs(Active_GUIS) do
         for i, b in pairs(gui.buttons) do
